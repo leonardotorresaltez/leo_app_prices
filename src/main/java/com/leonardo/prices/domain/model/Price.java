@@ -14,11 +14,10 @@ public class Price {
     private final LocalDateTime endDate;
     private final BigDecimal amount;
     private final String currency;
-    private final Integer priority;
 
     public Price(Long productId, Long brandId, Integer priceList,
                  LocalDateTime startDate, LocalDateTime endDate,
-                 BigDecimal amount, String currency, Integer priority) {
+                 BigDecimal amount, String currency) {
         this.productId = productId;
         this.brandId = brandId;
         this.priceList = priceList;
@@ -26,7 +25,6 @@ public class Price {
         this.endDate = endDate;
         this.amount = amount;
         this.currency = currency;
-        this.priority = priority;
     }
 
     public Long getProductId() { return productId; }
@@ -36,5 +34,4 @@ public class Price {
     public LocalDateTime getEndDate() { return endDate; }
     public BigDecimal getAmount() { return amount; }
     public String getCurrency() { return currency; }
-    public Integer getPriority() { return priority; }
 }

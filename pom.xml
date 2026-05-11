@@ -11,7 +11,7 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.inditex</groupId>
+    <groupId>com.leonardo</groupId>
     <artifactId>prices-api</artifactId>
     <version>1.0.0</version>
     <name>prices-api</name>

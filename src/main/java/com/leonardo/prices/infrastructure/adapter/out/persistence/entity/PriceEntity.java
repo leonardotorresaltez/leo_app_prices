@@ -5,10 +5,12 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * clase entity para ORM de base de datos
+ * clase entity para ORM de base de datos, con indice compuesto para busquedas
  */
 @Entity
-@Table(name = "PRICES")
+@Table(name = "PRICES", indexes = {
+    @Index(name = "idx_prices_lookup", columnList = "PRODUCT_ID, BRAND_ID, START_DATE, END_DATE, PRIORITY")
+})
 public class PriceEntity {
 
     @Id

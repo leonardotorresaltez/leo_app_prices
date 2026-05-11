@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 
 /**
- * 
+ * rest endpoint
  */
 @RestController
 @RequestMapping("/api/v1/prices")
