@@ -1,52 +1,102 @@
-# APP de Prices 
+# Prices API
 
-REST API desarrollada con Spring Boot 3.3.5 para consulta de precios aplicables según fecha, producto y cadena.
+REST API desarrollada con Spring Boot 3 para consultar el precio aplicable a un producto en una fecha dada, con desambiguación por prioridad cuando varios rangos se solapan.
 
-## Usa
+## Stack
 
-- Java 21
-- Spring Boot 3.3.5
-- Spring Data JPA
-- H2 (base de datos en memoria)
-- Maven
-- JUnit 5 + MockMvc (tests de integración)
+| Tecnología | Versión | Uso |
+|---|---|---|
+| Java | 21 | Lenguaje principal |
+| Spring Boot | 3.3.5 | Framework de aplicación |
+| Spring Data JPA | — | Acceso a datos |
+| H2 | — | Base de datos en memoria |
+| Maven | — | Gestión de dependencias y build |
+| JUnit 5 + MockMvc | — | Tests de integración |
+| Mockito + AssertJ | — | Tests unitarios |
 
-
-## Principios aplicados
-
-- **SOLID**: cada clase tiene responsabilidad única; dependencias por interfaces (puertos)
-- **Hexagonal Architecture**: el dominio no conoce Spring, JPA ni HTTP
-- **Clean Code**: nombres expresivos, sin lógica en controladores, mappers dedicados
-- **Eficiencia**: una sola query SQL con `ORDER BY priority DESC LIMIT 1` — sin lógica de desambiguación en Java
-
-## Ejecutar la aplicación
+## Arrancar la aplicación
 
 ```bash
 mvn spring-boot:run
 ```
 
-La aplicación arranca en `http://localhost:8080` e inicializa automáticamente la base de datos H2 con los datos de ejemplo.
+La aplicación levanta en `http://localhost:8080` e inicializa la base de datos H2 con los datos de ejemplo al arrancar.
 
-H2 Console disponible en: `http://localhost:8080/h2-console`
+Consola H2 disponible en `http://localhost:8080/h2-console`:
 - JDBC URL: `jdbc:h2:mem:pricesdb`
-- User: `sa`
-- Password: *(vacío)*
+- User: `sa` / Password: *(vacío)*
+
+---
+
+## Arquitectura
+
+La aplicación sigue **arquitectura hexagonal (Ports & Adapters)**. El principio central es que el núcleo de negocio (dominio) no conoce ningún detalle de infraestructura: ni Spring, ni JPA, ni HTTP. Todo lo externo se conecta mediante interfaces (puertos) que el dominio define y que la infraestructura implementa.
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  Infrastructure                                          │
+│                                                          │
+│   ┌─────────────┐              ┌──────────────────────┐  │
+│   │ REST        │              │ Persistence          │  │
+│   │ Controller  │              │ Adapter              │  │
+│   │ (in-adapter)│              │ (out-adapter)        │  │
+│   └──────┬──────┘              └──────────┬───────────┘  │
+│          │                               │               │
+│   ┌──────▼───────────────────────────────▼───────────┐   │
+│   │  Application                                     │   │
+│   │  GetApplicablePriceService                       │   │
+│   └──────┬───────────────────────────────┬───────────┘   │
+│          │                               │               │
+│   ┌──────▼──────────┐         ┌──────────▼────────────┐  │
+│   │ Port IN         │         │ Port OUT              │  │
+│   │ GetApplicable   │         │ PriceRepository       │  │
+│   │ PriceUseCase    │         │ (interfaz)            │  │
+│   └─────────────────┘         └───────────────────────┘  │
+│          Domain (sin dependencias externas)               │
+└──────────────────────────────────────────────────────────┘
+```
+
+### Capas
+
+**Domain** — contiene el modelo de negocio (`Price`) y las interfaces de los puertos. No importa ninguna clase de Spring ni JPA; puede compilar y testearse de forma completamente aislada.
+
+**Application** — `GetApplicablePriceService` implementa el puerto de entrada y orquesta la operación: delega en el puerto de salida y lanza `PriceNotFoundException` si no hay resultado. Está anotado con `@Transactional(readOnly = true)` para evitar el dirty checking de Hibernate en operaciones de solo lectura.
+
+**Infrastructure** — dos adaptadores:
+- *Adaptador de entrada* (`PriceController`): recibe la petición HTTP, valida los parámetros y devuelve el DTO de respuesta.
+- *Adaptador de salida* (`PriceRepositoryAdapter`): implementa el puerto de repositorio usando Spring Data JPA y mapea la entidad al modelo de dominio.
+
+
+---
+
+## Modelo de datos
+
+Tabla `PRICES` inicializada con los datos del enunciado:
+
+| BRAND_ID | START_DATE | END_DATE | PRICE_LIST | PRODUCT_ID | PRIORITY | PRICE | CURR |
+|---|---|---|---|---|---|---|---|
+| 1 | 2020-06-14 00:00:00 | 2020-12-31 23:59:59 | 1 | 35455 | 0 | 35.50 | EUR |
+| 1 | 2020-06-14 15:00:00 | 2020-06-14 18:30:00 | 2 | 35455 | 1 | 25.45 | EUR |
+| 1 | 2020-06-15 00:00:00 | 2020-06-15 11:00:00 | 3 | 35455 | 1 | 30.50 | EUR |
+| 1 | 2020-06-15 16:00:00 | 2020-12-31 23:59:59 | 4 | 35455 | 1 | 38.95 | EUR |
+
+Cuando dos tarifas se solapan, se aplica la de mayor `PRIORITY` (columna). La desambiguación ocurre en base de datos mediante `ORDER BY priority DESC LIMIT 1`, sin lógica adicional en Java.
+
+---
 
 ## Endpoint
 
-### GET /api/v1/prices
+### `GET /api/v1/prices`
 
-Devuelve el precio aplicable para una fecha, producto y cadena dados.
+**Parámetros:**
 
-**Parámetros de entrada:**
+| Parámetro | Tipo | Descripción | Ejemplo |
+|---|---|---|---|
+| `applicationDate` | ISO 8601 | Fecha y hora de consulta | `2020-06-14T10:00:00` |
+| `productId` | Long | Identificador del producto | `35455` |
+| `brandId` | Long | Identificador de la cadena | `1` |
 
-| Parámetro         | Tipo            | Descripción                          | Ejemplo                  |
-|-------------------|-----------------|--------------------------------------|--------------------------|
-| `applicationDate` | LocalDateTime   | Fecha y hora de consulta (ISO 8601)  | `2020-06-14T10:00:00`    |
-| `productId`       | Long            | Identificador del producto           | `35455`                  |
-| `brandId`         | Long            | Identificador de la cadena           | `1`                      |
-
-**Respuesta exitosa (200 OK):**
+**Respuesta `200 OK`:**
 
 ```json
 {
@@ -62,25 +112,36 @@ Devuelve el precio aplicable para una fecha, producto y cadena dados.
 
 **Errores:**
 
-| Código | Descripción                                 |
-|--------|---------------------------------------------|
-| `400`  | Parámetros inválidos o ausentes             |
-| `404`  | No existe precio para los parámetros dados  |
+| Código | Causa |
+|---|---|
+| `400` | Parámetros ausentes o con formato inválido |
+| `404` | No existe precio para los parámetros dados |
 
-**Ejemplo de uso:**
+**Ejemplo:**
 
 ```bash
-curl "http://localhost:8080/api/v1/prices?applicationDate=2020-06-14T10:00:00&productId=35455&brandId=1"
+curl "http://localhost:8080/api/v1/prices?applicationDate=2020-06-14T16:00:00&productId=35455&brandId=1"
 ```
 
-## Tests de integración
+---
 
--          Test 1: petición a las 10:00 del día 14 del producto 35455   para la brand 1 (ZARA)
--          Test 2: petición a las 16:00 del día 14 del producto 35455   para la brand 1 (ZARA)
--          Test 3: petición a las 21:00 del día 14 del producto 35455   para la brand 1 (ZARA)
--          Test 4: petición a las 10:00 del día 15 del producto 35455   para la brand 1 (ZARA)
--          Test 5: petición a las 21:00 del día 16 del producto 35455   para la brand 1 (ZARA)
+## Decisiones técnicas
+
+**`BigDecimal` para el precio** — evita los errores de representación en punto flotante inherentes a `double`/`float`, mejor para valores de dinero
+
+**Desambiguación en base de datos** — la query usa `ORDER BY priority DESC LIMIT 1` directamente en SQL. Traer todos los registros coincidentes y ordenarlos en Java sería menos eficiente
+
+**Índice compuesto** — `@Index(columnList = "PRODUCT_ID, BRAND_ID, START_DATE, END_DATE, PRIORITY")` declarado en `PriceEntity`. Con H2 en memoria el beneficio es marginal, pero el índice se genera automáticamente en cualquier base de datos de producción que soporte JPA.
+
+**`@Transactional(readOnly = true)`** — desactiva el dirty checking de Hibernate (snapshot de entidades para detectar cambios al cerrar la sesión). En una operación de solo lectura ese trabajo es completamente innecesario.
+
+**Mappers manuales en lugar de MapStruct** — las conversiones son simples y el número de campos es reducido. Añadir MapStruct introduce un procesador de anotaciones y una dependencia de compilación que no aporta valor en este contexto.
+
+---
+
+## Tests
 
 ```bash
 mvn test
 ```
+
